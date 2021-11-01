@@ -23,6 +23,7 @@ all-features = true
 [lib]
 
 [dependencies]
+rfd = "0.5"
 egui = { version = "0.15.0", path = "../egui", default-features = false }
 epi = { version = "0.15.0", path = "../epi" }
 

@@ -1,3 +1,8 @@
+use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+use std::sync::Arc;
+
+static OPENED: AtomicBool = AtomicBool::new(false);
+
 #[derive(Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 enum Enum {
@@ -9,7 +14,7 @@ enum Enum {
 /// Shows off one example of each major type of widget.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct WidgetGallery {
-    enabled: bool,
+    enabled: Arc<AtomicBool>,
     visible: bool,
     boolean: bool,
     radio: Enum,
@@ -22,17 +27,19 @@ pub struct WidgetGallery {
 impl Default for WidgetGallery {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: Arc::new(AtomicBool::new(true)),
             visible: true,
             boolean: false,
             radio: Enum::First,
             scalar: 42.0,
             string: Default::default(),
             color: egui::Color32::LIGHT_BLUE.linear_multiply(0.5),
-            animate_progress_bar: false,
+            animate_progress_bar: true,
         }
     }
 }
+
+
 
 impl super::Demo for WidgetGallery {
     fn name(&self) -> &'static str {
@@ -53,7 +60,7 @@ impl super::Demo for WidgetGallery {
 
 impl super::View for WidgetGallery {
     fn ui(&mut self, ui: &mut egui::Ui) {
-        ui.add_enabled_ui(self.enabled, |ui| {
+        ui.add_enabled_ui(self.enabled.load(Relaxed), |ui| {
             ui.set_visible(self.visible);
 
             egui::Grid::new("my_grid")
@@ -71,7 +78,7 @@ impl super::View for WidgetGallery {
             ui.checkbox(&mut self.visible, "Visible")
                 .on_hover_text("Uncheck to hide all the widgets.");
             if self.visible {
-                ui.checkbox(&mut self.enabled, "Interactive")
+                ui.checkbox(&mut self.enabled.load(Relaxed), "Interactive")
                     .on_hover_text("Uncheck to inspect how the widgets look when disabled.");
             }
         });
@@ -91,7 +98,7 @@ impl super::View for WidgetGallery {
 impl WidgetGallery {
     fn gallery_grid_contents(&mut self, ui: &mut egui::Ui) {
         let Self {
-            enabled: _,
+            enabled,
             visible: _,
             boolean,
             radio,
@@ -119,7 +126,26 @@ impl WidgetGallery {
 
         ui.add(doc_link_label("Button", "button"));
         if ui.button("Click me!").clicked() {
+            let atom_enabled = enabled.clone();
+
             *boolean = !*boolean;
+            if !OPENED.load(Relaxed) {
+                ui.ctx().output().cursor_icon = egui::CursorIcon::Wait;
+            } else {
+                ui.ctx().output().cursor_icon = egui::CursorIcon::Default;
+            }
+
+            std::thread::spawn(move || {
+                OPENED.store(true, Relaxed);
+                atom_enabled.store(false, Relaxed);
+                use rfd::FileDialog;
+                let files = FileDialog::new()
+                                .set_directory(r"/Users/tenx/Documents/GitHub/egui/egui_demo_lib/src")
+                                .pick_files();
+                println!("{:#?}", files);
+                OPENED.store(false, Relaxed);
+                atom_enabled.store(true, Relaxed);
+            });
         }
         ui.end_row();
 
@@ -169,7 +195,7 @@ impl WidgetGallery {
         let progress = *scalar / 360.0;
         let progress_bar = egui::ProgressBar::new(progress)
             .show_percentage()
-            .animate(*animate_progress_bar);
+            .animate(false);
         *animate_progress_bar = ui
             .add(progress_bar)
             .on_hover_text("The progress bar can be animated!")

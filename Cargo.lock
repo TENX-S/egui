@@ -909,6 +909,7 @@ dependencies = [
  "enum-map",
  "epi",
  "image",
+ "rfd",
  "serde",
  "syntect",
  "unicode_names2",
